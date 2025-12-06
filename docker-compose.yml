@@ -1,0 +1,78 @@
+services:
+
+  spark-master:
+    image: apache/spark:3.4.2
+    container_name: spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./scripts:/scripts
+      - ./output:/output
+
+  spark-worker:
+    image: apache/spark:3.4.2
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    volumes:
+      - ./data:/data
+      - ./scripts:/scripts
+      - ./output:/output
+
+  hive:
+    image: apache/hive:3.1.3
+    container_name: hive
+    environment:
+      - SERVICE_NAME=hiveserver2
+    ports:
+      - "10000:10000"
+
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+
+  airflow-webserver:
+    image: apache/airflow:2.9.1
+    container_name: airflow-webserver
+    depends_on:
+      - postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    ports:
+      - "8081:8080"
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.1
+    container_name: airflow-scheduler
+    depends_on:
+      - airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+    command: scheduler
+
+  streamlit:
+    image: python:3.10-slim
+    container_name: fraud-frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - ./output:/output
+    ports:
+      - "8501:8501"
+    command: >
+      bash -c "pip install streamlit pandas scikit-learn joblib &&
+      streamlit run app.py --server.port=8501 --server.address=0.0.0.0"
